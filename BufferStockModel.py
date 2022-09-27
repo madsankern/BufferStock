@@ -1,5 +1,4 @@
 # Standard Consumption-Saving model form the Heterogeneous Agents course
-# Permanent-transitory income dynamics
 
 import time
 import numpy as np
