@@ -27,7 +27,12 @@ class ConSavModelClass(EconModelClass):
         par = self.par
         
         # preferences
-        par.beta = 0.96 # discount factor
+        par.beta = 0.96 # discount factor, will be on a grid
+
+        par.beta_max = 0.96
+        par.beta_min = 0.6
+        par.Nbeta = 5
+
         par.sigma = 2.0 # CRRA coefficient
 
         # income
@@ -89,6 +94,9 @@ class ConSavModelClass(EconModelClass):
         par.z_ergodic_cumsum = np.cumsum(par.z_ergodic)
         par.z_trans_T = par.z_trans.T
 
+        # b. discount factor grid
+        par.beta_grid = np.linspace(par.beta_min, par.beta_max, par.Nbeta)
+
         # b. asset grid
         assert par.b <= 0.0, f'{par.b = :.1f} > 0, should be negative'
         b_min = -par.z_grid.min()/par.r
@@ -99,13 +107,14 @@ class ConSavModelClass(EconModelClass):
         par.a_grid = par.w*equilogspace(par.b,par.a_max,par.Na)
 
         # c. solution arrays
-        sol.c = np.zeros((par.Nz,par.Na))
-        sol.a = np.zeros((par.Nz,par.Na))
-        sol.vbeg = np.zeros((par.Nz,par.Na))
+        sol_shape = (par.Nbeta,par.Nz,par.Na)
+        sol.c = np.zeros(sol_shape)
+        sol.a = np.zeros(sol_shape)
+        sol.vbeg = np.zeros(sol_shape)
 
-        # hist
-        sol.pol_indices = np.zeros((par.Nz,par.Na),dtype=np.int_)
-        sol.pol_weights = np.zeros((par.Nz,par.Na))
+        # hist - check the shapes of these
+        sol.pol_indices = np.zeros(sol_shape,dtype=np.int_)
+        sol.pol_weights = np.zeros(sol_shape)
 
         # d. simulation arrays
 
@@ -296,31 +305,32 @@ def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,vbeg,c,a):
     v = np.zeros(vbeg_plus.shape)
 
     # a. solution step
-    for i_z in nb.prange(par.Nz):
-        for i_a_lag in nb.prange(par.Na):
+    for i_beta in nb.prange(par.Nbeta):
+        for i_z in nb.prange(par.Nz):
+            for i_a_lag in nb.prange(par.Na):
 
-            # i. cash-on-hand and maximum consumption
-            m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
-            c_max = m - par.b*par.w
+                # i. cash-on-hand and maximum consumption
+                m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
+                c_max = m - par.b*par.w
 
-            # ii. initial consumption and bounds
-            c_guess = np.zeros((1,1))
-            bounds = np.zeros((1,2))
+                # ii. initial consumption and bounds
+                c_guess = np.zeros((1,1))
+                bounds = np.zeros((1,2))
 
-            c_guess[0] = c_plus[i_z,i_a_lag]
-            bounds[0,0] = 1e-8 
-            bounds[0,1] = c_max
+                c_guess[0] = c_plus[i_z,i_a_lag]
+                bounds[0,0] = 1e-8 
+                bounds[0,1] = c_max
 
-            # iii. optimize
-            results = qe.optimize.nelder_mead(value_of_choice,
-                c_guess, 
-                bounds=bounds,
-                args=(par,i_z,m,vbeg_plus))
+                # iii. optimize
+                results = qe.optimize.nelder_mead(value_of_choice,
+                    c_guess, 
+                    bounds=bounds,
+                    args=(par,i_z,m,vbeg_plus))
 
-            # iv. save
-            c[i_z,i_a_lag] = results.x[0]
-            a[i_z,i_a_lag] = m-c[i_z,i_a_lag]
-            v[i_z,i_a_lag] = results.fun # convert to maximum
+                # iv. save
+                c[i_z,i_a_lag] = results.x[0]
+                a[i_z,i_a_lag] = m-c[i_z,i_a_lag]
+                v[i_z,i_a_lag] = results.fun # convert to maximum
 
     # b. expectation step
     vbeg[:,:] = par.z_trans@v
