@@ -39,14 +39,14 @@ class ConSavModelClass(EconModelClass):
         par.Nzt = 5 # number of grid points for zt
         
         par.sigma_xi = 0.10 # std. of transitory shock
-        par.Nxi = 2 # number of grid points for xi
+        par.Nxi = 5 # number of grid points for xi
 
         # saving
         par.r = 0.02 # interest rate
-        par.b = -0.10 # borrowing constraint relative to wage
+        par.b = -0.0 # borrowing constraint relative to wage
 
         # grid
-        par.a_max = 100.0 # maximum point in grid
+        par.a_max = 15.0 # maximum point in grid
         par.Na = 500 # number of grid points       
 
         # simulation
@@ -420,7 +420,7 @@ def find_i_and_w(par,sol):
 
 @nb.njit
 def simulate_hh_forwards_stochastic(par,Dbeg,D):
-    D[:,:] = par.z_trans_T@Dbeg
+    D[:,:] = par.z_trans_T@Dbeg # Take matrix product to compute the expectation over the possible values of z
 
 @nb.njit(parallel=True)   
 def simulate_hh_forwards_choice(par,sol,D,Dbeg_plus):
