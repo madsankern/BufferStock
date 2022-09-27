@@ -14,7 +14,10 @@ from consav.quadrature import log_normal_gauss_hermite
 from consav.linear_interp import binary_search, interp_1d
 from consav.misc import elapsed
 
-class ConSavModelClass(EconModelClass):
+# local modules
+import solve_hh
+
+class FEModelClass(EconModelClass):
 
     def settings(self):
         """ fundamental settings """
@@ -27,13 +30,13 @@ class ConSavModelClass(EconModelClass):
         par = self.par
         
         # preferences
-        par.beta = 0.96 # discount factor, will be on a grid
-
-        par.beta_max = 0.96
-        par.beta_min = 0.6
-        par.Nbeta = 5
+        par.beta_max = 0.96 # highest beta
+        par.beta_min = 0.6 # lowest beta
+        par.Nbeta = 5 # number of grid points for beta
 
         par.sigma = 2.0 # CRRA coefficient
+
+        par.H = 20 # length of lifecycle
 
         # income
         par.w = 1.0 # wage level
@@ -42,8 +45,8 @@ class ConSavModelClass(EconModelClass):
         par.sigma_psi = 0.10 # std. of persistent shock
         par.Nzt = 5 # number of grid points for zt
         
-        par.sigma_xi = 0.10 # std. of transitory shock
-        par.Nxi = 5 # number of grid points for xi
+        par.sigma_xi = 0.0 #0.10 # std. of transitory shock
+        par.Nxi = 1 # number of grid points for xi
 
         # saving
         par.r = 0.02 # interest rate
@@ -107,7 +110,7 @@ class ConSavModelClass(EconModelClass):
         par.a_grid = par.w*equilogspace(par.b,par.a_max,par.Na)
 
         # c. solution arrays
-        sol_shape = (par.Nbeta,par.Nz,par.Na)
+        sol_shape = (par.H,par.Nbeta,par.Nz,par.Na)
         sol.c = np.zeros(sol_shape)
         sol.a = np.zeros(sol_shape)
         sol.vbeg = np.zeros(sol_shape)
@@ -132,7 +135,7 @@ class ConSavModelClass(EconModelClass):
         sim.Dbeg_ = np.zeros(sol.a.shape)
         sim.D_ = np.zeros(sol.a.shape)
 
-    def solve(self,do_print=True,algo='vfi'):
+    def solve(self,do_print=True):
         """ solve model using value function iteration or egm """
 
         t0 = time.time()
@@ -142,20 +145,20 @@ class ConSavModelClass(EconModelClass):
             par = model.par
             sol = model.sol
 
-            # time loop
-            it = 0
-            while True:
+            # loop backwards over the life cycle
+            for h in reversed(range(par.H)):
                 
-                t0_it = time.time()
+                # t0_it = time.time()
 
                 # a. next-period value function
-                if it == 0: # guess on consuming everything
-                    
-                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]
+                if h == par.H-1: # last period of life => consume everything
+
+                    m_plus = np.zeros((par.H,par.Nbeta,par.Nz,par.Na)) # added a dimension for betas             
+                    m_plus[:,:] = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis] # dimension 0 of m_plus does not matter in the last period
                     c_plus_max = m_plus - par.w*par.b
                     c_plus = 0.99*c_plus_max # arbitary factor
                     v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
-                    vbeg_plus = par.z_trans@v_plus
+                    vbeg_plus = par.z_trans@v_plus # not needed. Check if matmul makes sense at all when dim(v_plus) = 3
 
                 else:
 
@@ -163,27 +166,22 @@ class ConSavModelClass(EconModelClass):
                     c_plus = sol.c.copy()
 
                 # b. solve this period
-                if algo == 'vfi':
-                    solve_hh_backwards_vfi(par,vbeg_plus,c_plus,sol.vbeg,sol.c,sol.a)  
-                    max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
-                elif algo == 'egm':
-                    solve_hh_backwards_egm(par,c_plus,sol.c,sol.a)
-                    max_abs_diff = np.max(np.abs(sol.c-c_plus))
-                else:
-                    raise NotImplementedError
+                solve_hh.egm(h,par,c_plus,sol.c,sol.a)
+
+                # max_abs_diff = np.max(np.abs(sol.c-c_plus))
 
                 # c. check convergence
-                converged = max_abs_diff < par.tol_solve
+                # converged = max_abs_diff < par.tol_solve
                 
                 # d. break
-                if do_print and (converged or it < 10 or it%100 == 0):
-                    print(f'iteration {it:4d} solved in {elapsed(t0_it):10s}',end='')              
-                    print(f' [max abs. diff. {max_abs_diff:5.2e}]')
+                # if do_print and (converged or it < 10 or it%100 == 0):
+                #     print(f'iteration {it:4d} solved in {elapsed(t0_it):10s}',end='')              
+                #     print(f' [max abs. diff. {max_abs_diff:5.2e}]')
 
-                if converged: break
+                # if converged: break
 
-                it += 1
-                if it > par.max_iter_solve: raise ValueError('too many iterations in solve()')
+                # it += 1
+                # if it > par.max_iter_solve: raise ValueError('too many iterations in solve()')
         
         if do_print: print(f'model solved in {elapsed(t0)}')              
 
@@ -276,95 +274,6 @@ class ConSavModelClass(EconModelClass):
 
         if do_print: 
             print(f'model simulated in {elapsed(t0)} [{it} iterations]')
-
-##################
-# solution - vfi #
-##################
-
-@nb.njit
-def value_of_choice(c,par,i_z,m,vbeg_plus):
-    """ value of choice for use in vfi """
-
-    # a. utility
-    utility = c[0]**(1-par.sigma)/(1-par.sigma)
-
-    # b. end-of-period assets
-    a = m - c[0]
-
-    # c. continuation value     
-    vbeg_plus_interp = interp_1d(par.a_grid,vbeg_plus[i_z,:],a)
-
-    # d. total value
-    value = utility + par.beta*vbeg_plus_interp
-    return value
-
-@nb.njit(parallel=True)        
-def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,vbeg,c,a):
-    """ solve backwards with v_plus from previous iteration """
-
-    v = np.zeros(vbeg_plus.shape)
-
-    # a. solution step
-    for i_beta in nb.prange(par.Nbeta):
-        for i_z in nb.prange(par.Nz):
-            for i_a_lag in nb.prange(par.Na):
-
-                # i. cash-on-hand and maximum consumption
-                m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
-                c_max = m - par.b*par.w
-
-                # ii. initial consumption and bounds
-                c_guess = np.zeros((1,1))
-                bounds = np.zeros((1,2))
-
-                c_guess[0] = c_plus[i_z,i_a_lag]
-                bounds[0,0] = 1e-8 
-                bounds[0,1] = c_max
-
-                # iii. optimize
-                results = qe.optimize.nelder_mead(value_of_choice,
-                    c_guess, 
-                    bounds=bounds,
-                    args=(par,i_z,m,vbeg_plus))
-
-                # iv. save
-                c[i_z,i_a_lag] = results.x[0]
-                a[i_z,i_a_lag] = m-c[i_z,i_a_lag]
-                v[i_z,i_a_lag] = results.fun # convert to maximum
-
-    # b. expectation step
-    vbeg[:,:] = par.z_trans@v
-
-##################
-# solution - egm #
-##################
-
-@nb.njit(parallel=True)
-def solve_hh_backwards_egm(par,c_plus,c,a):
-    """ solve backwards with c_plus from previous iteration """
-
-    for i_z in nb.prange(par.Nz):
-
-        # a. post-decision marginal value of cash
-        q_vec = np.zeros(par.Na)
-        for i_z_plus in range(par.Nz):
-            q_vec += par.z_trans[i_z,i_z_plus]*c_plus[i_z_plus,:]**(-par.sigma)
-        
-        # b. implied consumption function
-        c_vec = (par.beta*(1+par.r)*q_vec)**(-1.0/par.sigma)
-        m_vec = par.a_grid+c_vec
-
-        # c. interpolate from (m,c) to (a_lag,c)
-        for i_a_lag in range(par.Na):
-            
-            m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
-            
-            if m <= m_vec[0]: # constrained (lower m than choice with a = 0)
-                c[i_z,i_a_lag] = m - par.b*par.w
-                a[i_z,i_a_lag] = par.b*par.w
-            else: # unconstrained
-                c[i_z,i_a_lag] = interp_1d(m_vec,c_vec,m) 
-                a[i_z,i_a_lag] = m-c[i_z,i_a_lag] 
 
 ############################
 # simulation - monte carlo #
