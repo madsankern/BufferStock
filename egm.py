@@ -30,11 +30,11 @@ def egm(h,par,c_plus,c,a):
             # c. interpolate from (m,c) to (a_lag,c)
             for i_a_lag in range(par.Na):
                 
-                m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
+                m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z] # From def. of assets and cash on hand
                 
                 if m <= m_vec[0]: # constrained (lower m than choice with a = 0)
-                    c[h,i_beta,i_z,i_a_lag] = m - par.b*par.w
-                    a[h,i_beta,i_z,i_a_lag] = par.b*par.w
+                    c[h,i_beta,i_z,i_a_lag] = m
+                    a[h,i_beta,i_z,i_a_lag] = 0.0 # from definition of being constrained
                 else: # unconstrained
                     c[h,i_beta,i_z,i_a_lag] = linear_interp.interp_1d(m_vec,c_vec,m) 
-                    a[h,i_beta,i_z,i_a_lag] = m-c[h,i_beta,i_z,i_a_lag] 
+                    a[h,i_beta,i_z,i_a_lag] = m-c[h,i_beta,i_z,i_a_lag]
