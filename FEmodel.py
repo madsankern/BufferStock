@@ -15,7 +15,8 @@ from consav.linear_interp import binary_search, interp_1d
 from consav.misc import elapsed
 
 # local modules
-import solve_hh
+import egm
+import last_period
 
 class FEModelClass(EconModelClass):
 
@@ -28,15 +29,23 @@ class FEModelClass(EconModelClass):
         """ set baseline parameters """
 
         par = self.par
-        
-        # preferences
-        par.beta_max = 0.96 # highest beta
-        par.beta_min = 0.6 # lowest beta
+
+        # a. discount factor - add more than two values
+        par.beta_max = 0.96
+        par.beta_min = 0.6
         par.Nbeta = 5 # number of grid points for beta
 
-        par.sigma = 2.0 # CRRA coefficient
+        # b. individual income states
+        par.alpha_l_min = 0.9 # level parameter
+        par.alpha_l_max = 1.1
+        par.Nalpha_l = 2
 
-        par.H = 20 # length of lifecycle
+        par.alpha_s_min = 0.1 # slope parameter
+        par.alpha_s_max = 0.2
+        par.Nalpha_s = 2
+
+        # preferences
+        par.sigma = 2.0 # CRRA coefficient
 
         # income
         par.w = 1.0 # wage level
@@ -53,8 +62,11 @@ class FEModelClass(EconModelClass):
         par.b = -0.0 # borrowing constraint relative to wage
 
         # grid
-        par.a_max = 15.0 # maximum point in grid
+        par.a_max = 50.0 # maximum point in grid
         par.Na = 500 # number of grid points       
+
+        # length of lifecylcle
+        par.H = 100
 
         # simulation
         par.simT = 500 # number of periods
@@ -75,11 +87,11 @@ class FEModelClass(EconModelClass):
         
         # a. transition matrix
         
-        # persistent
+        # i. persistent
         _out = log_rouwenhorst(par.rho_zt,par.sigma_psi,par.Nzt)
         par.zt_grid,par.zt_trans,par.zt_ergodic,par.zt_trans_cumsum,par.zt_ergodic_cumsum = _out
         
-        # transitory
+        # ii. transitory
         if par.sigma_xi > 0 and par.Nxi > 1:
             par.xi_grid,par.xi_weights = log_normal_gauss_hermite(par.sigma_xi,par.Nxi)
             par.xi_trans = np.broadcast_to(par.xi_weights,(par.Nxi,par.Nxi))
@@ -88,7 +100,7 @@ class FEModelClass(EconModelClass):
             par.xi_weights = np.ones(1)
             par.xi_trans = np.ones((1,1))
 
-        # combined
+        # iii. combined
         par.Nz = par.Nxi*par.Nzt
         par.z_grid = np.repeat(par.xi_grid,par.Nzt)*np.tile(par.zt_grid,par.Nxi)
         par.z_trans = np.kron(par.xi_trans,par.zt_trans)
@@ -98,7 +110,11 @@ class FEModelClass(EconModelClass):
         par.z_trans_T = par.z_trans.T
 
         # b. discount factor grid
-        par.beta_grid = np.linspace(par.beta_min, par.beta_max, par.Nbeta)
+        par.beta_grid = np.linspace(par.beta_min,par.beta_max,par.Nbeta)
+
+        # c. alpha grids
+        par.alpha_l_grid = np.linspace(par.alpha_l_min,par.alpha_l_max,par.Nalpha_l)
+        par.alpha_s_grid = np.linspace(par.alpha_s_min,par.alpha_s_max,par.Nalpha_s)
 
         # b. asset grid
         assert par.b <= 0.0, f'{par.b = :.1f} > 0, should be negative'
@@ -110,7 +126,7 @@ class FEModelClass(EconModelClass):
         par.a_grid = par.w*equilogspace(par.b,par.a_max,par.Na)
 
         # c. solution arrays
-        sol_shape = (par.H,par.Nbeta,par.Nz,par.Na)
+        sol_shape = (par.H,par.Nbeta,par.Nalpha_s,par.Nalpha_l,par.Nz,par.Na) # added alphas as states
         sol.c = np.zeros(sol_shape)
         sol.a = np.zeros(sol_shape)
         sol.vbeg = np.zeros(sol_shape)
@@ -147,42 +163,15 @@ class FEModelClass(EconModelClass):
 
             # loop backwards over the life cycle
             for h in reversed(range(par.H)):
-                
-                # t0_it = time.time()
 
-                # a. next-period value function
+                # a. last period
                 if h == par.H-1: # last period of life => consume everything
-
-                    m_plus = np.zeros((par.H,par.Nbeta,par.Nz,par.Na)) # added a dimension for betas             
-                    m_plus[:,:] = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis] # dimension 0 of m_plus does not matter in the last period
-                    c_plus_max = m_plus - par.w*par.b
-                    c_plus = 0.99*c_plus_max # arbitary factor
-                    v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
-                    vbeg_plus = par.z_trans@v_plus # not needed. Check if matmul makes sense at all when dim(v_plus) = 3
-
-                else:
-
-                    vbeg_plus = sol.vbeg.copy()
-                    c_plus = sol.c.copy()
-
-                # b. solve this period
-                solve_hh.egm(h,par,c_plus,sol.c,sol.a)
-
-                # max_abs_diff = np.max(np.abs(sol.c-c_plus))
-
-                # c. check convergence
-                # converged = max_abs_diff < par.tol_solve
+                    last_period.solve(h,sol,par)
                 
-                # d. break
-                # if do_print and (converged or it < 10 or it%100 == 0):
-                #     print(f'iteration {it:4d} solved in {elapsed(t0_it):10s}',end='')              
-                #     print(f' [max abs. diff. {max_abs_diff:5.2e}]')
+                # b. all other periods
+                else:
+                    egm.solve(h,sol,par)
 
-                # if converged: break
-
-                # it += 1
-                # if it > par.max_iter_solve: raise ValueError('too many iterations in solve()')
-        
         if do_print: print(f'model solved in {elapsed(t0)}')              
 
     def prepare_simulate(self,algo='mc',do_print=True):

@@ -2,16 +2,14 @@
 
 import numba as nb
 
-@njit(parallel=True)
+@nb.njit(parallel=True)
 def solve(h,sol,par):
     """ solve the household problem in the last period of life """
 
     # unpack
-    v = sol.v[h]
     c = sol.c[h]
 
-    # Loop over states
-    # for i_beta in nb.prange(par.Nbeta):
+    # Loop over states, no need to loop over discount factors
     for i_z in nb.prange(par.Nz):
         for i_a_lag in nb.prange(par.Na):
 
@@ -23,9 +21,19 @@ def solve(h,sol,par):
             m = (1+par.r)*a_lag + par.w*z
 
             # Optimal to consume everything. Choice does not depend on beta
-            c[:,i_z,i_a_lag] = m
+            c[:,:,:,i_z,i_a_lag] = m
 
-            # Value of choice
-            v[:,i_z,i_a_lag] = c[:,i_z,i_a_lag]**(1-par.sigma) / (1-par.sigma)
+
+
+
+
+
+            # THERE SHOULD BE NO NEED TO COMPUTE THE VALUE FUNCTION RECURSIVELY
+            # vbeg_plus = c[:,i_z,i_a_lag]**(1-par.sigma) / (1-par.sigma)
+
+            # Value of choice at the beginning of period
+            # vbeg[:,i_z,i_a_lag] = 
+
+            # v[:,i_z,i_a_lag] = c[:,i_z,i_a_lag]**(1-par.sigma) / (1-par.sigma)
 
                 
