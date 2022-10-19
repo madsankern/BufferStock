@@ -17,6 +17,7 @@ from consav.misc import elapsed
 # local modules
 import egm
 import last_period
+import first_period
 
 class FEModelClass(EconModelClass):
 
@@ -41,8 +42,13 @@ class FEModelClass(EconModelClass):
         par.Nalpha_l = 2
 
         par.alpha_s_min = 0.1 # slope parameter
-        par.alpha_s_max = 0.2
+        par.alpha_s_max = 0.3
         par.Nalpha_s = 2
+
+        # c. ability parameter
+        par.alpha_tilde_min = 0.5
+        par.alpha_tilde_max = 1.5
+        par.Nalpha_tilde = 10 # don't know how many grid points to use
 
         # preferences
         par.sigma = 2.0 # CRRA coefficient
@@ -66,7 +72,7 @@ class FEModelClass(EconModelClass):
         par.Na = 500 # number of grid points       
 
         # length of lifecylcle
-        par.H = 100
+        par.H = 20
 
         # simulation
         par.simT = 500 # number of periods
@@ -113,6 +119,7 @@ class FEModelClass(EconModelClass):
         par.beta_grid = np.linspace(par.beta_min,par.beta_max,par.Nbeta)
 
         # c. alpha grids
+        par.alpha_tilde_grid = np.linspace(par.alpha_tilde_min,par.alpha_tilde_max,par.Nalpha_tilde) # innate ability grid
         par.alpha_l_grid = np.linspace(par.alpha_l_min,par.alpha_l_max,par.Nalpha_l)
         par.alpha_s_grid = np.linspace(par.alpha_s_min,par.alpha_s_max,par.Nalpha_s)
 
@@ -129,7 +136,13 @@ class FEModelClass(EconModelClass):
         sol_shape = (par.H,par.Nbeta,par.Nalpha_s,par.Nalpha_l,par.Nz,par.Na) # added alphas as states
         sol.c = np.zeros(sol_shape)
         sol.a = np.zeros(sol_shape)
-        sol.vbeg = np.zeros(sol_shape)
+        sol.vbeg = np.zeros(sol_shape) # not used?
+        sol.v = np.zeros(sol_shape) # to compute expectation for optimal choice at h=0
+
+        # solution for optimal alphas
+        alpha_shape = (par.Nbeta,par.Nalpha_tilde)
+        sol.alpha_l = np.zeros(alpha_shape)
+        sol.alpha_s = np.zeros(alpha_shape)
 
         # hist - check the shapes of these
         sol.pol_indices = np.zeros(sol_shape,dtype=np.int_)
@@ -171,6 +184,9 @@ class FEModelClass(EconModelClass):
                 # b. all other periods
                 else:
                     egm.solve(h,sol,par)
+            
+            # find optimal choice in the first period
+            first_period.solve(sol,par) # any input missing?
 
         if do_print: print(f'model solved in {elapsed(t0)}')              
 

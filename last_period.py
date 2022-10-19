@@ -8,8 +8,9 @@ def solve(h,sol,par):
 
     # unpack
     c = sol.c[h]
+    v = sol.v[h]
 
-    # Loop over states, no need to loop over discount factors
+    # Loop over states, no need to loop over fixed states
     for i_z in nb.prange(par.Nz):
         for i_a_lag in nb.prange(par.Na):
 
@@ -22,18 +23,6 @@ def solve(h,sol,par):
 
             # Optimal to consume everything. Choice does not depend on beta
             c[:,:,:,i_z,i_a_lag] = m
-
-
-
-
-
-
-            # THERE SHOULD BE NO NEED TO COMPUTE THE VALUE FUNCTION RECURSIVELY
-            # vbeg_plus = c[:,i_z,i_a_lag]**(1-par.sigma) / (1-par.sigma)
-
-            # Value of choice at the beginning of period
-            # vbeg[:,i_z,i_a_lag] = 
-
-            # v[:,i_z,i_a_lag] = c[:,i_z,i_a_lag]**(1-par.sigma) / (1-par.sigma)
-
-                
+    
+            # value of choice
+            v[:,:,:,i_z,i_a_lag] = c[:,:,:,i_z,i_a_lag]**(1-par.sigma) / (1-par.sigma)
