@@ -15,7 +15,7 @@ def solve(sol,par):
     
         # compute beginning of period expectation, using the ergodic distribution of productivity
         for i_z in range(par.Nz):
-            
+ 
             # probability weight
             w = par.z_ergodic[i_z]
 
@@ -25,10 +25,10 @@ def solve(sol,par):
     #############################################
     # Compute penalty term for each alpha_tilde #
     #############################################
-    
-    # weights of penalty terms
-    w_l = 1.0
-    w_s = 1.0
+
+    # weights of penalty terms, move to preferences paramters
+    w_l = .5
+    w_s = .5
 
     # test
     mean_alpha_l = np.mean(par.alpha_l_grid)
@@ -47,9 +47,10 @@ def solve(sol,par):
                     alpha_l = par.alpha_l_grid[i_alpha_l]
                     alpha_s = par.alpha_s_grid[i_alpha_s]
                     alpha_tilde = par.alpha_tilde_grid[i_alpha_tilde]
+                    beta = par.beta_grid[i_beta]
 
                     # penalty term
-                    penalty = -1*(w_l*(alpha_l/mean_alpha_l - alpha_tilde) + w_s*(alpha_s/mean_alpha_s - alpha_tilde))
+                    penalty = -1*(1-beta**(par.H-1))/(1-beta)*(w_l*(alpha_l/mean_alpha_l - alpha_tilde)**2 + w_s*(alpha_s/mean_alpha_s - alpha_tilde)**2)
                     
                     # value of choice of (alpha_l,alpha_s)
                     val_of_choice[i_beta,i_alpha_tilde,i_alpha_l,i_alpha_s] = expectation_exante[i_beta,i_alpha_l,i_alpha_s] + penalty
@@ -59,6 +60,3 @@ def solve(sol,par):
 
                     sol.alpha_l[i_beta,i_alpha_tilde] = x[0]
                     sol.alpha_s[i_beta,i_alpha_tilde] = x[1]
-
-                    # find optimal choice
-                    # code, index by alpha_tilde

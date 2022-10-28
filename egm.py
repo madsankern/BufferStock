@@ -42,7 +42,7 @@ def solve(h,sol,par):
 
                     # b. implied consumption function
                     c_vec = (beta*(1+par.r)*q_vec)**(-1.0/par.sigma)
-                    m_vec = par.a_grid + c_vec # check if this should be changed
+                    m_vec = par.a_grid + c_vec # check if this should be changed, dont think so
 
                     # c. interpolate from (m,c) to (a_lag,c)
                     for i_a_lag in nb.prange(par.Na):

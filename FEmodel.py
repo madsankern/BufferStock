@@ -33,16 +33,16 @@ class FEModelClass(EconModelClass):
 
         # a. discount factor - add more than two values
         par.beta_max = 0.96
-        par.beta_min = 0.6
+        par.beta_min = 0.5
         par.Nbeta = 5 # number of grid points for beta
 
         # b. individual income states
-        par.alpha_l_min = 0.9 # level parameter
-        par.alpha_l_max = 1.1
+        par.alpha_l_min = 0.2 # level parameter
+        par.alpha_l_max = 0.5
         par.Nalpha_l = 2
 
-        par.alpha_s_min = 0.1 # slope parameter
-        par.alpha_s_max = 0.3
+        par.alpha_s_min = 0.02 # slope parameter
+        par.alpha_s_max = 0.2
         par.Nalpha_s = 2
 
         # c. ability parameter
@@ -72,7 +72,7 @@ class FEModelClass(EconModelClass):
         par.Na = 500 # number of grid points       
 
         # length of lifecylcle
-        par.H = 20
+        par.H = 30
 
         # simulation
         par.simT = 500 # number of periods
@@ -133,7 +133,7 @@ class FEModelClass(EconModelClass):
         par.a_grid = par.w*equilogspace(par.b,par.a_max,par.Na)
 
         # c. solution arrays
-        sol_shape = (par.H,par.Nbeta,par.Nalpha_s,par.Nalpha_l,par.Nz,par.Na) # added alphas as states
+        sol_shape = (par.H,par.Nbeta,par.Nalpha_l,par.Nalpha_s,par.Nz,par.Na) # added alphas as states
         sol.c = np.zeros(sol_shape)
         sol.a = np.zeros(sol_shape)
         sol.vbeg = np.zeros(sol_shape) # not used?
@@ -143,6 +143,8 @@ class FEModelClass(EconModelClass):
         alpha_shape = (par.Nbeta,par.Nalpha_tilde)
         sol.alpha_l = np.zeros(alpha_shape)
         sol.alpha_s = np.zeros(alpha_shape)
+
+        sol.expectation_exante = np.zeros((par.Nbeta,par.Nalpha_l,par.Nalpha_s)) # just a temporary variable
 
         # hist - check the shapes of these
         sol.pol_indices = np.zeros(sol_shape,dtype=np.int_)
