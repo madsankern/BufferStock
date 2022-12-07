@@ -35,19 +35,19 @@ def solve(h,sol,par):
                 # idiosyncratic states
                 for i_z in nb.prange(par.Nz):
 
-                    # a. post-decision marginal value of cash
+                    # a. post-decision marginal value of cash, can be written without the loop (?)
                     q_vec = np.zeros(par.Na)
                     for i_z_plus in range(par.Nz):
                         q_vec += par.z_trans[i_z,i_z_plus]*c_plus[i_beta,i_alpha_l,i_alpha_s,i_z_plus]**(-par.sigma) # transition probabilties should not be changed
 
                     # b. implied consumption function
                     c_vec = (beta*(1+par.r)*q_vec)**(-1.0/par.sigma)
-                    m_vec = par.a_grid + c_vec # check if this should be changed, dont think so
+                    m_vec = par.a_grid + c_vec
 
                     # c. interpolate from (m,c) to (a_lag,c)
                     for i_a_lag in nb.prange(par.Na):
                         
-                        m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z] + alpha_l + h*alpha_s # From def. of assets and cash-on-hand, added the alphas
+                        m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z] + alpha_l + alpha_s*h # From def. of assets and cash-on-hand, added the alphas
                         
                         if m <= m_vec[0]: # constrained (lower m than choice with a = 0)
                             c[i_beta,i_alpha_l,i_alpha_s,i_z,i_a_lag] = m
