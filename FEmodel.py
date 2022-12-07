@@ -50,10 +50,10 @@ class FEModelClass(EconModelClass):
         par.alpha_tilde_max = 1.5
         par.Nalpha_tilde = 10 # don't know how many grid points to use
 
-        # preferences
+        # d. preferences
         par.sigma = 2.0 # CRRA coefficient
 
-        # income
+        # e. income
         par.w = 1.0 # wage level
         
         par.rho_zt = 0.96 # AR(1) parameter
@@ -63,22 +63,22 @@ class FEModelClass(EconModelClass):
         par.sigma_xi = 0.10 # std. of transitory shock
         par.Nxi = 5 # number of grid points for xi
 
-        # saving
+        # f. saving
         par.r = 0.02 # interest rate
         par.b = -0.0 # borrowing constraint relative to wage
 
-        # grid
+        # g. grids
         par.a_max = 50.0 # maximum point in grid
         par.Na = 500 # number of grid points       
 
-        # length of lifecylcle
+        # h. length of lifecylcle
         par.H = 10 #100
 
-        # simulation
+        # i. simulation
         par.simT = 1 # number of periods
         par.simN = 100_000 # number of individuals (mc)
 
-        # tolerances
+        # j. tolerances
         par.max_iter_solve = 10_000 # maximum number of iterations
         par.max_iter_simulate = 10_000 # maximum number of iterations
         par.tol_solve = 1e-8 # tolerance when solving
