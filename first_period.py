@@ -58,5 +58,5 @@ def solve(sol,par):
                     # find optimal choice
                     x = np.unravel_index(np.argmax(val_of_choice[i_beta,i_alpha_tilde],axis=None),val_of_choice[i_beta,i_alpha_tilde].shape) # can this be written better?
 
-                    sol.alpha_l[i_beta,i_alpha_tilde] = x[0]
-                    sol.alpha_s[i_beta,i_alpha_tilde] = x[1]
+                    sol.alpha_l[i_beta,i_alpha_tilde] = x[0] # the name should be changed, as the vector contains the optimal INDICIES
+                    sol.alpha_s[i_beta,i_alpha_tilde] = x[1] # the name should be changed, as the vector contains the optimal INDICIES

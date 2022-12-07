@@ -33,16 +33,16 @@ class FEModelClass(EconModelClass):
 
         # a. discount factor - add more than two values
         par.beta_max = 0.96
-        par.beta_min = 0.5
+        par.beta_min = 0.7
         par.Nbeta = 5 # number of grid points for beta
 
         # b. individual income states
-        par.alpha_l_min = 0.2 # level parameter
-        par.alpha_l_max = 0.5
+        par.alpha_l_min = 0.5 # level parameter
+        par.alpha_l_max = 1.0
         par.Nalpha_l = 2
 
-        par.alpha_s_min = 0.02 # slope parameter
-        par.alpha_s_max = 0.2
+        par.alpha_s_min = 0.1 #0.02 # slope parameter
+        par.alpha_s_max = 0.5 #0.05
         par.Nalpha_s = 2
 
         # c. ability parameter
@@ -57,11 +57,11 @@ class FEModelClass(EconModelClass):
         par.w = 1.0 # wage level
         
         par.rho_zt = 0.96 # AR(1) parameter
-        par.sigma_psi = 0.10 # std. of persistent shock
+        par.sigma_psi = 0.5 # std. of persistent shock
         par.Nzt = 5 # number of grid points for zt
         
-        par.sigma_xi = 0.0 #0.10 # std. of transitory shock
-        par.Nxi = 1 # number of grid points for xi
+        par.sigma_xi = 0.10 # std. of transitory shock
+        par.Nxi = 5 # number of grid points for xi
 
         # saving
         par.r = 0.02 # interest rate
@@ -72,10 +72,10 @@ class FEModelClass(EconModelClass):
         par.Na = 500 # number of grid points       
 
         # length of lifecylcle
-        par.H = 30
+        par.H = 10 #100
 
         # simulation
-        par.simT = 500 # number of periods
+        par.simT = 1 # number of periods
         par.simN = 100_000 # number of individuals (mc)
 
         # tolerances
@@ -117,9 +117,11 @@ class FEModelClass(EconModelClass):
 
         # b. discount factor grid
         par.beta_grid = np.linspace(par.beta_min,par.beta_max,par.Nbeta)
+        par.beta_cumsum = np.cumsum(np.tile(1./par.Nbeta,par.Nbeta)) #  implicitly discrete uniform disitribution
 
         # c. alpha grids
         par.alpha_tilde_grid = np.linspace(par.alpha_tilde_min,par.alpha_tilde_max,par.Nalpha_tilde) # innate ability grid
+        par.alpha_tilde_cumsum = np.cumsum(np.tile(1./par.Nalpha_tilde,par.Nalpha_tilde))
         par.alpha_l_grid = np.linspace(par.alpha_l_min,par.alpha_l_max,par.Nalpha_l)
         par.alpha_s_grid = np.linspace(par.alpha_s_min,par.alpha_s_max,par.Nalpha_s)
 
@@ -151,14 +153,28 @@ class FEModelClass(EconModelClass):
         sol.pol_weights = np.zeros(sol_shape)
 
         # d. simulation arrays
+        sim_shape = (par.H, par.simN) # shape of simulation arrays
 
         # mc
-        sim.a_ini = np.zeros((par.simN,))
-        sim.p_z_ini = np.zeros((par.simN,))
-        sim.c = np.zeros((par.simT,par.simN))
-        sim.a = np.zeros((par.simT,par.simN))
-        sim.p_z = np.zeros((par.simT,par.simN))
-        sim.i_z = np.zeros((par.simT,par.simN),dtype=np.int_)
+        sim.a_ini = np.zeros((par.simN,)) # initial assets, which are zero
+        sim.p_z_ini = np.zeros((par.simN,)) # productivity
+        sim.p_beta = np.zeros((par.simN,)) # discount factor
+        sim.p_alpha_tilde = np.zeros((par.simN,)) # innate ability
+
+        sim.c = np.zeros(sim_shape)
+        sim.a = np.zeros(sim_shape)
+        sim.p_z = np.zeros(sim_shape)
+        sim.i_z = np.zeros(sim_shape,dtype=np.int_)
+
+        sim.i_beta = np.zeros(par.simN,dtype=np.int_)
+        sim.i_alpha_tilde = np.zeros(par.simN,dtype=np.int_)
+        sim.i_alpha_l = np.zeros(par.simN,dtype=np.int_)
+        sim.i_alpha_s = np.zeros(par.simN,dtype=np.int_)
+
+        sim.beta = np.zeros(par.simN,)
+        sim.alpha_tilde = np.zeros(par.simN,)
+        sim.alpha_l = np.zeros(par.simN,)
+        sim.alpha_s = np.zeros(par.simN,)
 
         # hist
         sim.Dbeg = np.zeros((par.simT,*sol.a.shape))
@@ -181,32 +197,45 @@ class FEModelClass(EconModelClass):
 
                 # a. last period
                 if h == par.H-1: # last period of life => consume everything
+                    t0_last = time.time()
                     last_period.solve(h,sol,par)
-                
+                    if do_print: print(f'last period solved in {elapsed(t0_last)}')
+
                 # b. all other periods
                 else:
                     egm.solve(h,sol,par)
-            
-            # find optimal choice in the first period
-            first_period.solve(sol,par) # any input missing?
 
+            # find optimal choice in the first period
+            t0_first = time.time()
+            first_period.solve(sol,par)
+            if do_print: print(f'first period problem solved in {elapsed(t0_first)}')
+           
         if do_print: print(f'model solved in {elapsed(t0)}')              
 
     def prepare_simulate(self,algo='mc',do_print=True):
         """ prepare simulation """
 
+        # set timer
         t0 = time.time()
 
+        # extract namespaces
         par = self.par
         sim = self.sim
 
+        # if using monte carlo
         if algo == 'mc':
 
+            # everybody starts with zero initial assets
             sim.a_ini[:] = 0.0
-            sim.p_z_ini[:] = np.random.uniform(size=(par.simN,))
-            sim.p_z[:,:] = np.random.uniform(size=(par.simT,par.simN))
 
-        elif algo == 'hist':
+            # draw uniform numbers for stochastic realizations
+            sim.p_z_ini[:] = np.random.uniform(size=(par.simN,)) # initial productivity
+            sim.p_z[:,:] = np.random.uniform(size=(par.H,par.simN)) # each productivity shift
+
+            sim.p_beta[:] = np.random.uniform(size=(par.simN,)) # discount factor
+            sim.p_alpha_tilde[:] = np.random.uniform(size=(par.simN,)) # innate ability
+
+        elif algo == 'hist': # not usable atm
 
             sim.Dbeg[0,:,0] = par.z_ergodic
             sim.Dbeg_[:,0] = par.z_ergodic
@@ -215,7 +244,7 @@ class FEModelClass(EconModelClass):
             
             raise NotImplementedError
 
-        if do_print: print(f'model prepared for simulation in {time.time()-t0:.1f} secs')
+        if do_print: print(f'model prepared for simulation in {time.time()-t0:.1f}')
 
     def simulate(self,algo='mc',do_print=True):
         """ simulate model """
@@ -232,18 +261,18 @@ class FEModelClass(EconModelClass):
             if algo == 'hist': find_i_and_w(par,sol)
 
             # time loop
-            for t in range(par.simT):
+            for h in range(par.H):
                 
                 if algo == 'mc':
-                    simulate_forwards_mc(t,par,sim,sol)
-                elif algo == 'hist':
-                    sim.D[t] = par.z_trans.T@sim.Dbeg[t]
-                    if t == par.simT-1: continue
-                    simulate_hh_forwards_choice(par,sol,sim.D[t],sim.Dbeg[t+1])
+                    simulate_forwards_mc(h,par,sim,sol)
+                elif algo == 'hist': # not usable atm
+                    sim.D[h] = par.z_trans.T@sim.Dbeg[h]
+                    if h == par.simT-1: continue
+                    simulate_hh_forwards_choice(par,sol,sim.D[h],sim.Dbeg[h+1])
                 else:
                     raise NotImplementedError
 
-        if do_print: print(f'model simulated in {elapsed(t0)} secs')
+        if do_print: print(f'model simulated in {elapsed(t0)}')
             
     def simulate_hist_alt(self,do_print=True):
         """ simulate model """
@@ -287,34 +316,64 @@ class FEModelClass(EconModelClass):
 ############################
 
 @nb.njit(parallel=True)
-def simulate_forwards_mc(t,par,sim,sol):
+def simulate_forwards_mc(h,par,sim,sol):
     """ monte carlo simulation of model. """
     
+    # unpack sim choice containers
     c = sim.c
     a = sim.a
     i_z = sim.i_z
 
+    alpha_l = sim.alpha_l
+    alpha_s = sim.alpha_s
+
+    i_beta = sim.i_beta
+    i_alpha_tilde = sim.i_alpha_tilde
+    i_alpha_l = sim.i_alpha_l
+    i_alpha_s = sim.i_alpha_s
+
+    # parallel loop over all individuals
     for i in nb.prange(par.simN):
 
-        # a. lagged assets
-        if t == 0:
+        # do stuff in the first period        
+        if h == 0:
+
+            # initial productivity determined by p_z_ini and ergodic distribution
             p_z_ini = sim.p_z_ini[i]
             i_z_lag = choice(p_z_ini,par.z_ergodic_cumsum)
-            a_lag = sim.a_ini[i]
+            
+            # beta
+            p_beta = sim.p_beta[i]
+            i_beta[i] = choice(p_beta,par.beta_cumsum)
+
+            # alpha_tilde
+            p_alpha_tilde = sim.p_alpha_tilde[i]
+            i_alpha_tilde[i] = choice(p_alpha_tilde,par.alpha_tilde_cumsum)
+
+            # find optimal alpha_l & alpha_s given (beta,alpha_tilde)
+            i_alpha_l[i] = int(sol.alpha_l[i_beta[i],i_alpha_tilde[i]])
+            i_alpha_s[i] = int(sol.alpha_s[i_beta[i],i_alpha_tilde[i]])
+
+            alpha_l[i] = par.alpha_l_grid[i_alpha_l[i]]
+            alpha_s[i] = par.alpha_s_grid[i_alpha_s[i]]
+
+            # initial assets
+            a_lag = sim.a_ini[i] # initial assets are just zero
+        
         else:
-            i_z_lag = sim.i_z[t-1,i]
-            a_lag = sim.a[t-1,i]
+            i_z_lag = sim.i_z[h-1,i]
+            a_lag = sim.a[h-1,i]
 
         # b. productivity
-        p_z = sim.p_z[t,i]
-        i_z_ = i_z[t,i] = choice(p_z,par.z_trans_cumsum[i_z_lag,:])
+        p_z = sim.p_z[h,i]
+        i_z_ = i_z[h,i] = choice(p_z,par.z_trans_cumsum[i_z_lag,:])
 
         # c. consumption
-        c[t,i] = interp_1d(par.a_grid,sol.c[i_z_,:],a_lag)
+        c[h,i] = interp_1d(par.a_grid,sol.c[h,i_beta[i],i_alpha_l[i],i_alpha_s[i],i_z_,:],a_lag)
 
         # d. end-of-period assets
-        m = (1+par.r)*a_lag + par.w*par.z_grid[i_z_]
-        a[t,i] = m-c[t,i]
+        m = (1+par.r)*a_lag + par.w*par.z_grid[i_z_] + alpha_l[i] + alpha_s[i]*h # added all the alphas
+        a[h,i] = m-c[h,i]
 
 ##########################
 # simulation - histogram #
